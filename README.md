@@ -1,5 +1,7 @@
 # Friction Log Backend
 
+![CI](https://github.com/nytomi90/friction-log-backend/actions/workflows/ci.yml/badge.svg)
+
 Python FastAPI backend for tracking daily life friction.
 
 ## Overview
