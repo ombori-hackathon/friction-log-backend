@@ -5,6 +5,7 @@ This module initializes the FastAPI app, configures CORS, and defines
 the health check endpoint.
 """
 
+from contextlib import asynccontextmanager
 from typing import Optional
 
 from fastapi import Depends, FastAPI, HTTPException, status
@@ -24,6 +25,20 @@ from contract.generated.python.models import (
     TrendDataPoint,
 )
 
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    """
+    Lifespan context manager for application startup and shutdown.
+
+    Initializes database on startup.
+    """
+    # Startup: Initialize database
+    init_db()
+    yield
+    # Shutdown: Add any cleanup code here if needed
+
+
 # Create FastAPI app
 app = FastAPI(
     title="Friction Log API",
@@ -34,6 +49,7 @@ app = FastAPI(
     ),
     docs_url="/docs",
     redoc_url="/redoc",
+    lifespan=lifespan,
 )
 
 # Configure CORS for macOS app
@@ -49,13 +65,6 @@ app.add_middleware(
     allow_methods=["*"],  # Allow all methods (GET, POST, PUT, DELETE, etc.)
     allow_headers=["*"],  # Allow all headers
 )
-
-
-# Initialize database on startup
-@app.on_event("startup")
-async def startup_event():
-    """Initialize database tables on application startup."""
-    init_db()
 
 
 # Health check endpoint
