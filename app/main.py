@@ -372,6 +372,53 @@ async def get_friction_by_category(db: Session = Depends(get_db)):
     return analytics.calculate_category_breakdown(db)
 
 
+@app.get(
+    "/api/analytics/most-annoying",
+    tags=["analytics"],
+)
+async def get_most_annoying_items(limit: int = 5, db: Session = Depends(get_db)):
+    """
+    Get the most annoying friction items based on today's impact.
+
+    Impact is calculated as: encounter_count × annoyance_level for today.
+    Items are sorted by their impact score (descending).
+
+    Args:
+        limit: Maximum number of items to return (default: 5, max: 20)
+        db: Database session (injected)
+
+    Returns:
+        list[dict]: Most annoying items with impact scores
+
+    Example:
+        >>> GET /api/analytics/most-annoying?limit=5
+        [
+            {
+                "id": 1,
+                "title": "Slow WiFi",
+                "annoyance_level": 5,
+                "encounter_count": 3,
+                "impact": 15,
+                "category": "digital"
+            },
+            ...
+        ]
+    """
+    # Validate limit parameter
+    if limit < 1:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail="limit must be at least 1",
+        )
+    if limit > 20:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail="limit must not exceed 20",
+        )
+
+    return analytics.get_most_annoying_items(db, limit=limit)
+
+
 # ==================== Settings Endpoints ====================
 
 
