@@ -5,7 +5,7 @@ This module provides database operations for creating, reading, updating,
 and deleting friction items.
 """
 
-from datetime import datetime, timezone
+from datetime import date, datetime, timezone
 from typing import Optional
 
 from sqlalchemy.orm import Session
@@ -23,15 +23,15 @@ from contract.generated.python.models import (
 )
 
 
-def friction_item_to_response(db_item: FrictionItem) -> FrictionItemResponse:
+def friction_item_to_response(db_item: FrictionItem) -> dict:
     """
-    Convert SQLAlchemy FrictionItem to Pydantic FrictionItemResponse.
+    Convert SQLAlchemy FrictionItem to response dict (including encounter tracking).
 
     Args:
         db_item: SQLAlchemy FrictionItem instance
 
     Returns:
-        FrictionItemResponse: Pydantic model for API response
+        dict: Response with all fields including encounter tracking
     """
 
     # Ensure datetimes have timezone info (SQLite strips it)
@@ -40,17 +40,31 @@ def friction_item_to_response(db_item: FrictionItem) -> FrictionItemResponse:
             return dt.replace(tzinfo=timezone.utc)
         return dt
 
-    return FrictionItemResponse(
-        id=db_item.id,
-        title=db_item.title,
-        description=db_item.description,
-        annoyance_level=db_item.annoyance_level,
-        category=Category(db_item.category),
-        status=Status(db_item.status),
-        created_at=ensure_tz(db_item.created_at),
-        updated_at=ensure_tz(db_item.updated_at),
-        fixed_at=ensure_tz(db_item.fixed_at),
+    # Check if daily encounter limit is exceeded
+    is_limit_exceeded = (
+        db_item.encounter_limit is not None
+        and db_item.encounter_count >= db_item.encounter_limit
     )
+
+    return {
+        "id": db_item.id,
+        "title": db_item.title,
+        "description": db_item.description,
+        "annoyance_level": db_item.annoyance_level,
+        "category": db_item.category,
+        "status": db_item.status,
+        "created_at": ensure_tz(db_item.created_at),
+        "updated_at": ensure_tz(db_item.updated_at),
+        "fixed_at": ensure_tz(db_item.fixed_at),
+        "encounter_count": db_item.encounter_count or 0,
+        "encounter_limit": db_item.encounter_limit,
+        "last_encounter_date": (
+            db_item.last_encounter_date.isoformat()
+            if db_item.last_encounter_date
+            else None
+        ),
+        "is_limit_exceeded": is_limit_exceeded,
+    }
 
 
 def create_friction_item(db: Session, item: FrictionItemCreate) -> FrictionItemResponse:
@@ -70,6 +84,7 @@ def create_friction_item(db: Session, item: FrictionItemCreate) -> FrictionItemR
         annoyance_level=item.annoyance_level,
         category=item.category.value,
         status="not_fixed",  # Default status
+        encounter_limit=getattr(item, "encounter_limit", None),  # New field
     )
 
     db.add(db_item)
@@ -202,3 +217,39 @@ def delete_friction_item(db: Session, item_id: int) -> bool:
     db.commit()
 
     return True
+
+
+def increment_encounter(db: Session, item_id: int) -> Optional[dict]:
+    """
+    Increment encounter count for a friction item.
+
+    Resets counter to 1 if its a new day since last encounter.
+    Otherwise increments the existing count.
+
+    Args:
+        db: Database session
+        item_id: Friction item ID
+
+    Returns:
+        dict: Updated friction item response, or None if not found
+    """
+    db_item = db.query(FrictionItem).filter(FrictionItem.id == item_id).first()
+
+    if db_item is None:
+        return None
+
+    today = date.today()
+
+    # Check if we need to reset (new day)
+    if db_item.last_encounter_date != today:
+        # New day - reset counter
+        db_item.encounter_count = 1
+        db_item.last_encounter_date = today
+    else:
+        # Same day - increment
+        db_item.encounter_count += 1
+
+    db.commit()
+    db.refresh(db_item)
+
+    return friction_item_to_response(db_item)

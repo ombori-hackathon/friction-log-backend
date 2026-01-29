@@ -113,6 +113,30 @@ pytest --cov=app --cov-report=html
 
 See full API documentation at `/docs` when server is running.
 
+### Example Requests
+
+**Create a friction item**:
+```bash
+curl -X POST http://localhost:8000/api/friction-items \
+  -H "Content-Type: application/json" \
+  -d '{
+    "title": "Slow WiFi",
+    "description": "Internet drops during video calls",
+    "annoyance_level": 4,
+    "category": "digital"
+  }'
+```
+
+**Get current score**:
+```bash
+curl http://localhost:8000/api/analytics/score
+```
+
+**Filter items by status**:
+```bash
+curl "http://localhost:8000/api/friction-items?status=not_fixed"
+```
+
 ## Project Structure
 
 ```
@@ -128,6 +152,22 @@ friction-log-backend/
 ├── requirements.txt      # Production dependencies
 └── requirements-dev.txt  # Development dependencies
 ```
+
+## Database Schema
+
+**Table: `friction_items`**
+
+| Column         | Type     | Description                      |
+|----------------|----------|----------------------------------|
+| id             | INTEGER  | Primary key, auto-increment      |
+| title          | TEXT     | Short description of friction    |
+| description    | TEXT     | Optional detailed description    |
+| annoyance_level| INTEGER  | Severity rating (1-5)            |
+| category       | TEXT     | Enum: home/work/digital/health/other |
+| status         | TEXT     | Enum: not_fixed/in_progress/fixed |
+| created_at     | DATETIME | Timestamp (UTC)                  |
+| updated_at     | DATETIME | Last modified timestamp (UTC)    |
+| fixed_at       | DATETIME | Timestamp when marked as fixed   |
 
 ## Updating API Contract
 

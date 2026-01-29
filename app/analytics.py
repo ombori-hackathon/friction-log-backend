@@ -11,16 +11,11 @@ from sqlalchemy import func
 from sqlalchemy.orm import Session
 
 from app.models import FrictionItem
-from contract.generated.python.models import (
-    CategoryBreakdown,
-    CurrentScore,
-    TrendDataPoint,
-)
 
 
-def calculate_current_score(db: Session) -> CurrentScore:
+def calculate_current_score(db: Session) -> dict:
     """
-    Calculate the current friction score.
+    Calculate the current friction score including encounter stats.
 
     The score is the sum of annoyance_level for all active items
     (status != 'fixed').
@@ -29,7 +24,7 @@ def calculate_current_score(db: Session) -> CurrentScore:
         db: Database session
 
     Returns:
-        CurrentScore: Current score and active item count
+        dict: Current score, active item count, and encounter stats
     """
     # Query for active items (not fixed)
     active_items = db.query(FrictionItem).filter(FrictionItem.status != "fixed").all()
@@ -38,10 +33,33 @@ def calculate_current_score(db: Session) -> CurrentScore:
     current_score = sum(item.annoyance_level for item in active_items)
     active_count = len(active_items)
 
-    return CurrentScore(current_score=current_score, active_count=active_count)
+    # Calculate encounter stats
+    today = date.today()
+    items_over_limit = 0
+    total_encounters_today = 0
+
+    for item in active_items:
+        # Count today's encounters
+        if item.last_encounter_date == today:
+            total_encounters_today += item.encounter_count or 0
+
+        # Check if item exceeded its limit
+        if (
+            item.encounter_limit is not None
+            and item.last_encounter_date == today
+            and item.encounter_count >= item.encounter_limit
+        ):
+            items_over_limit += 1
+
+    return {
+        "current_score": current_score,
+        "active_count": active_count,
+        "items_over_limit": items_over_limit,
+        "total_encounters_today": total_encounters_today,
+    }
 
 
-def calculate_trend(db: Session, days: int = 30) -> list[TrendDataPoint]:
+def calculate_trend(db: Session, days: int = 30) -> list[dict]:
     """
     Calculate friction score trend over time.
 
@@ -83,17 +101,12 @@ def calculate_trend(db: Session, days: int = 30) -> list[TrendDataPoint]:
         # Calculate score for this day
         daily_score = sum(item.annoyance_level for item in items)
 
-        trend_data.append(
-            TrendDataPoint(
-                date=single_date,
-                score=daily_score,
-            )
-        )
+        trend_data.append({"date": single_date.isoformat(), "score": daily_score})
 
     return trend_data
 
 
-def calculate_category_breakdown(db: Session) -> CategoryBreakdown:
+def calculate_category_breakdown(db: Session) -> dict:
     """
     Calculate friction score breakdown by category.
 
@@ -122,4 +135,4 @@ def calculate_category_breakdown(db: Session) -> CategoryBreakdown:
         if item.category in breakdown:
             breakdown[item.category] += item.annoyance_level
 
-    return CategoryBreakdown(**breakdown)
+    return breakdown
