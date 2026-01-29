@@ -11,14 +11,17 @@ from fastapi import Depends, FastAPI, HTTPException, status
 from fastapi.middleware.cors import CORSMiddleware
 from sqlalchemy.orm import Session
 
-from app import crud
+from app import analytics, crud
 from app.database import get_db, init_db
 from contract.generated.python.models import (
     Category,
+    CategoryBreakdown,
+    CurrentScore,
     FrictionItemCreate,
     FrictionItemResponse,
     FrictionItemUpdate,
     Status,
+    TrendDataPoint,
 )
 
 # Create FastAPI app
@@ -234,3 +237,105 @@ async def delete_friction_item(item_id: int, db: Session = Depends(get_db)):
         )
 
     return None
+
+
+# ==================== Analytics Endpoints ====================
+
+
+@app.get(
+    "/api/analytics/score",
+    response_model=CurrentScore,
+    tags=["analytics"],
+)
+async def get_current_score(db: Session = Depends(get_db)):
+    """
+    Get the current friction score.
+
+    Calculates the sum of annoyance_level for all active items
+    (status != 'fixed').
+
+    Args:
+        db: Database session (injected)
+
+    Returns:
+        CurrentScore: Current friction score and active item count
+
+    Example:
+        >>> GET /api/analytics/score
+        {"current_score": 23, "active_count": 7}
+    """
+    return analytics.calculate_current_score(db)
+
+
+@app.get(
+    "/api/analytics/trend",
+    response_model=list[TrendDataPoint],
+    tags=["analytics"],
+)
+async def get_friction_trend(days: int = 30, db: Session = Depends(get_db)):
+    """
+    Get historical friction score trend.
+
+    Returns daily friction scores for the specified time period.
+    For each day, calculates what the friction score would have been
+    based on items that existed and were not fixed on that day.
+
+    Args:
+        days: Number of days to include (default: 30, max: 365)
+        db: Database session (injected)
+
+    Returns:
+        list[TrendDataPoint]: Daily scores sorted by date ascending
+
+    Example:
+        >>> GET /api/analytics/trend?days=7
+        [
+            {"date": "2026-01-23", "score": 28},
+            {"date": "2026-01-24", "score": 26},
+            ...
+        ]
+    """
+    # Validate days parameter
+    if days < 1:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail="days must be at least 1",
+        )
+    if days > 365:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail="days must not exceed 365",
+        )
+
+    return analytics.calculate_trend(db, days=days)
+
+
+@app.get(
+    "/api/analytics/by-category",
+    response_model=CategoryBreakdown,
+    tags=["analytics"],
+)
+async def get_friction_by_category(db: Session = Depends(get_db)):
+    """
+    Get friction score breakdown by category.
+
+    Returns the sum of annoyance_level for each category,
+    only including active items (status != 'fixed').
+
+    Args:
+        db: Database session (injected)
+
+    Returns:
+        CategoryBreakdown: Scores by category
+
+    Example:
+        >>> GET /api/analytics/by-category
+        {
+            "home": 8,
+            "work": 12,
+            "digital": 5,
+            "health": 3,
+            "other": 0
+        }
+    """
+    return analytics.calculate_category_breakdown(db)
