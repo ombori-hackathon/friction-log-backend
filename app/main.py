@@ -5,10 +5,21 @@ This module initializes the FastAPI app, configures CORS, and defines
 the health check endpoint.
 """
 
-from fastapi import FastAPI
-from fastapi.middleware.cors import CORSMiddleware
+from typing import Optional
 
-from app.database import init_db
+from fastapi import Depends, FastAPI, HTTPException, status
+from fastapi.middleware.cors import CORSMiddleware
+from sqlalchemy.orm import Session
+
+from app import crud
+from app.database import get_db, init_db
+from contract.generated.python.models import (
+    Category,
+    FrictionItemCreate,
+    FrictionItemResponse,
+    FrictionItemUpdate,
+    Status,
+)
 
 # Create FastAPI app
 app = FastAPI(
@@ -75,3 +86,151 @@ async def root():
         "docs": "/docs",
         "health": "/health",
     }
+
+
+# ==================== Friction Items CRUD Endpoints ====================
+
+
+@app.post(
+    "/api/friction-items",
+    response_model=FrictionItemResponse,
+    status_code=status.HTTP_201_CREATED,
+    tags=["friction-items"],
+)
+async def create_friction_item(item: FrictionItemCreate, db: Session = Depends(get_db)):
+    """
+    Create a new friction item.
+
+    Args:
+        item: Friction item data (from request body)
+        db: Database session (injected)
+
+    Returns:
+        FrictionItemResponse: Created friction item with ID and timestamps
+
+    Raises:
+        HTTPException: 422 if validation fails
+    """
+    return crud.create_friction_item(db, item)
+
+
+@app.get(
+    "/api/friction-items",
+    response_model=list[FrictionItemResponse],
+    tags=["friction-items"],
+)
+async def list_friction_items(
+    status: Optional[Status] = None,
+    category: Optional[Category] = None,
+    db: Session = Depends(get_db),
+):
+    """
+    List all friction items with optional filtering.
+
+    Args:
+        status: Optional filter by status (not_fixed, in_progress, fixed)
+        category: Optional filter by category (home, work, digital, etc.)
+        db: Database session (injected)
+
+    Returns:
+        list[FrictionItemResponse]: List of friction items (newest first)
+    """
+    return crud.get_friction_items(db, status=status, category=category)
+
+
+@app.get(
+    "/api/friction-items/{item_id}",
+    response_model=FrictionItemResponse,
+    tags=["friction-items"],
+)
+async def get_friction_item(item_id: int, db: Session = Depends(get_db)):
+    """
+    Get a single friction item by ID.
+
+    Args:
+        item_id: Friction item ID (from path parameter)
+        db: Database session (injected)
+
+    Returns:
+        FrictionItemResponse: Friction item details
+
+    Raises:
+        HTTPException: 404 if item not found
+    """
+    db_item = crud.get_friction_item_by_id(db, item_id)
+
+    if db_item is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Friction item not found",
+        )
+
+    return db_item
+
+
+@app.put(
+    "/api/friction-items/{item_id}",
+    response_model=FrictionItemResponse,
+    tags=["friction-items"],
+)
+async def update_friction_item(
+    item_id: int, item_update: FrictionItemUpdate, db: Session = Depends(get_db)
+):
+    """
+    Update an existing friction item.
+
+    Args:
+        item_id: Friction item ID (from path parameter)
+        item_update: Fields to update (from request body)
+        db: Database session (injected)
+
+    Returns:
+        FrictionItemResponse: Updated friction item
+
+    Raises:
+        HTTPException: 404 if item not found
+        HTTPException: 422 if validation fails
+
+    Special behavior:
+        - If status changes to 'fixed', sets fixed_at timestamp
+        - If status changes away from 'fixed', clears fixed_at timestamp
+    """
+    db_item = crud.update_friction_item(db, item_id, item_update)
+
+    if db_item is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Friction item not found",
+        )
+
+    return db_item
+
+
+@app.delete(
+    "/api/friction-items/{item_id}",
+    status_code=status.HTTP_204_NO_CONTENT,
+    tags=["friction-items"],
+)
+async def delete_friction_item(item_id: int, db: Session = Depends(get_db)):
+    """
+    Delete a friction item by ID.
+
+    Args:
+        item_id: Friction item ID (from path parameter)
+        db: Database session (injected)
+
+    Returns:
+        None (204 No Content)
+
+    Raises:
+        HTTPException: 404 if item not found
+    """
+    success = crud.delete_friction_item(db, item_id)
+
+    if not success:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Friction item not found",
+        )
+
+    return None

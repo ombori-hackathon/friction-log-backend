@@ -5,11 +5,16 @@ Note: These are ORM models for database operations.
 Pydantic models from the API contract are used for request/response validation.
 """
 
-from datetime import datetime
+from datetime import datetime, timezone
 
 from sqlalchemy import CheckConstraint, Column, DateTime, Integer, String
 
 from app.database import Base
+
+
+def utc_now():
+    """Return current UTC time with timezone info."""
+    return datetime.now(timezone.utc)
 
 
 class FrictionItem(Base):
@@ -42,10 +47,8 @@ class FrictionItem(Base):
     status = Column(String(50), nullable=False, default="not_fixed", index=True)
 
     # Timestamps
-    created_at = Column(DateTime, nullable=False, default=datetime.utcnow)
-    updated_at = Column(
-        DateTime, nullable=False, default=datetime.utcnow, onupdate=datetime.utcnow
-    )
+    created_at = Column(DateTime, nullable=False, default=utc_now)
+    updated_at = Column(DateTime, nullable=False, default=utc_now, onupdate=utc_now)
     fixed_at = Column(DateTime, nullable=True)
 
     # Add check constraint for annoyance_level
