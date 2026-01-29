@@ -10,7 +10,7 @@ from datetime import date, timedelta
 from sqlalchemy import func
 from sqlalchemy.orm import Session
 
-from app.models import FrictionItem
+from app.models import FrictionItem, Settings
 
 
 def calculate_current_score(db: Session) -> dict:
@@ -24,7 +24,7 @@ def calculate_current_score(db: Session) -> dict:
         db: Database session
 
     Returns:
-        dict: Current score, active item count, and encounter stats
+        dict: Current score, active item count, encounter stats, and global limit info
     """
     # Query for active items (not fixed)
     active_items = db.query(FrictionItem).filter(FrictionItem.status != "fixed").all()
@@ -51,11 +51,28 @@ def calculate_current_score(db: Session) -> dict:
         ):
             items_over_limit += 1
 
+    # Get global daily limit
+    global_limit_setting = (
+        db.query(Settings).filter(Settings.key == "global_daily_limit").first()
+    )
+    global_daily_limit = (
+        int(global_limit_setting.value) if global_limit_setting else None
+    )
+
+    # Calculate percentage of global limit used
+    global_limit_percentage = None
+    if global_daily_limit and global_daily_limit > 0:
+        global_limit_percentage = int(
+            (total_encounters_today / global_daily_limit) * 100
+        )
+
     return {
         "current_score": current_score,
         "active_count": active_count,
         "items_over_limit": items_over_limit,
         "total_encounters_today": total_encounters_today,
+        "global_daily_limit": global_daily_limit,
+        "global_limit_percentage": global_limit_percentage,
     }
 
 

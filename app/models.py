@@ -74,3 +74,20 @@ class FrictionItem(Base):
             f"<FrictionItem(id={self.id}, "
             f"title='{self.title}', status='{self.status}')>"
         )
+
+
+class Settings(Base):
+    """
+    Application settings stored in the database.
+
+    Uses a simple key-value store pattern for configuration.
+    """
+
+    __tablename__ = "settings"
+
+    key = Column(String(100), primary_key=True)
+    value = Column(String(500), nullable=False)
+    updated_at = Column(DateTime, nullable=False, default=utc_now, onupdate=utc_now)
+
+    def __repr__(self):
+        return f"<Settings(key='{self.key}', value='{self.value}')>"
