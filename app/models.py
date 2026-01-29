@@ -7,7 +7,7 @@ Pydantic models from the API contract are used for request/response validation.
 
 from datetime import datetime, timezone
 
-from sqlalchemy import CheckConstraint, Column, DateTime, Integer, String
+from sqlalchemy import CheckConstraint, Column, Date, DateTime, Integer, String
 
 from app.database import Base
 
@@ -51,11 +51,21 @@ class FrictionItem(Base):
     updated_at = Column(DateTime, nullable=False, default=utc_now, onupdate=utc_now)
     fixed_at = Column(DateTime, nullable=True)
 
-    # Add check constraint for annoyance_level
+    # Encounter tracking (daily resets)
+    encounter_count = Column(Integer, nullable=False, default=0)
+    encounter_limit = Column(Integer, nullable=True)  # Optional daily limit
+    last_encounter_date = Column(Date, nullable=True)  # Date of last encounter
+
+    # Add check constraints
     __table_args__ = (
         CheckConstraint(
             "annoyance_level >= 1 AND annoyance_level <= 5",
             name="check_annoyance_level",
+        ),
+        CheckConstraint("encounter_count >= 0", name="check_encounter_count_positive"),
+        CheckConstraint(
+            "encounter_limit IS NULL OR encounter_limit >= 1",
+            name="check_encounter_limit_positive",
         ),
     )
 

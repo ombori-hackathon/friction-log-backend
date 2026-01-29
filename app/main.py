@@ -16,13 +16,9 @@ from app import analytics, crud
 from app.database import get_db, init_db
 from contract.generated.python.models import (
     Category,
-    CategoryBreakdown,
-    CurrentScore,
     FrictionItemCreate,
-    FrictionItemResponse,
     FrictionItemUpdate,
     Status,
-    TrendDataPoint,
 )
 
 
@@ -105,7 +101,6 @@ async def root():
 
 @app.post(
     "/api/friction-items",
-    response_model=FrictionItemResponse,
     status_code=status.HTTP_201_CREATED,
     tags=["friction-items"],
 )
@@ -128,7 +123,6 @@ async def create_friction_item(item: FrictionItemCreate, db: Session = Depends(g
 
 @app.get(
     "/api/friction-items",
-    response_model=list[FrictionItemResponse],
     tags=["friction-items"],
 )
 async def list_friction_items(
@@ -152,7 +146,6 @@ async def list_friction_items(
 
 @app.get(
     "/api/friction-items/{item_id}",
-    response_model=FrictionItemResponse,
     tags=["friction-items"],
 )
 async def get_friction_item(item_id: int, db: Session = Depends(get_db)):
@@ -182,7 +175,6 @@ async def get_friction_item(item_id: int, db: Session = Depends(get_db)):
 
 @app.put(
     "/api/friction-items/{item_id}",
-    response_model=FrictionItemResponse,
     tags=["friction-items"],
 )
 async def update_friction_item(
@@ -248,12 +240,43 @@ async def delete_friction_item(item_id: int, db: Session = Depends(get_db)):
     return None
 
 
+@app.post(
+    "/api/friction-items/{item_id}/encounter",
+    tags=["friction-items"],
+)
+async def increment_encounter(item_id: int, db: Session = Depends(get_db)):
+    """
+    Increment encounter count for a friction item.
+
+    Resets counter to 1 if it's a new day since last encounter.
+    Otherwise increments the existing count.
+
+    Args:
+        item_id: Friction item ID (from path parameter)
+        db: Database session (injected)
+
+    Returns:
+        dict: Updated friction item with encounter count and is_limit_exceeded flag
+
+    Raises:
+        HTTPException: 404 if item not found
+    """
+    updated_item = crud.increment_encounter(db, item_id)
+
+    if updated_item is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Friction item not found",
+        )
+
+    return updated_item
+
+
 # ==================== Analytics Endpoints ====================
 
 
 @app.get(
     "/api/analytics/score",
-    response_model=CurrentScore,
     tags=["analytics"],
 )
 async def get_current_score(db: Session = Depends(get_db)):
@@ -278,7 +301,6 @@ async def get_current_score(db: Session = Depends(get_db)):
 
 @app.get(
     "/api/analytics/trend",
-    response_model=list[TrendDataPoint],
     tags=["analytics"],
 )
 async def get_friction_trend(days: int = 30, db: Session = Depends(get_db)):
@@ -321,7 +343,6 @@ async def get_friction_trend(days: int = 30, db: Session = Depends(get_db)):
 
 @app.get(
     "/api/analytics/by-category",
-    response_model=CategoryBreakdown,
     tags=["analytics"],
 )
 async def get_friction_by_category(db: Session = Depends(get_db)):
