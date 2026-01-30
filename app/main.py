@@ -14,6 +14,7 @@ from sqlalchemy.orm import Session
 
 from app import analytics, crud
 from app.database import get_db, init_db
+from app.models import Settings
 from contract.generated.python.models import (
     Category,
     FrictionItemCreate,
@@ -369,3 +370,131 @@ async def get_friction_by_category(db: Session = Depends(get_db)):
         }
     """
     return analytics.calculate_category_breakdown(db)
+
+
+@app.get(
+    "/api/analytics/most-annoying",
+    tags=["analytics"],
+)
+async def get_most_annoying_items(limit: int = 5, db: Session = Depends(get_db)):
+    """
+    Get the most annoying friction items based on today's impact.
+
+    Impact is calculated as: encounter_count × annoyance_level for today.
+    Items are sorted by their impact score (descending).
+
+    Args:
+        limit: Maximum number of items to return (default: 5, max: 20)
+        db: Database session (injected)
+
+    Returns:
+        list[dict]: Most annoying items with impact scores
+
+    Example:
+        >>> GET /api/analytics/most-annoying?limit=5
+        [
+            {
+                "id": 1,
+                "title": "Slow WiFi",
+                "annoyance_level": 5,
+                "encounter_count": 3,
+                "impact": 15,
+                "category": "digital"
+            },
+            ...
+        ]
+    """
+    # Validate limit parameter
+    if limit < 1:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail="limit must be at least 1",
+        )
+    if limit > 20:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail="limit must not exceed 20",
+        )
+
+    return analytics.get_most_annoying_items(db, limit=limit)
+
+
+# ==================== Settings Endpoints ====================
+
+
+@app.get(
+    "/api/settings/global-daily-limit",
+    tags=["settings"],
+)
+async def get_global_daily_limit(db: Session = Depends(get_db)):
+    """
+    Get the global daily encounter limit.
+
+    Returns the maximum number of total encounters allowed per day
+    across all friction items.
+
+    Args:
+        db: Database session (injected)
+
+    Returns:
+        dict: Global daily limit (null if not set)
+
+    Example:
+        >>> GET /api/settings/global-daily-limit
+        {"limit": 20}
+    """
+    setting = db.query(Settings).filter(Settings.key == "global_daily_limit").first()
+    if setting is None:
+        return {"limit": None}
+    return {"limit": int(setting.value)}
+
+
+@app.put(
+    "/api/settings/global-daily-limit",
+    tags=["settings"],
+)
+async def set_global_daily_limit(
+    limit: Optional[int] = None, db: Session = Depends(get_db)
+):
+    """
+    Set the global daily encounter limit.
+
+    Args:
+        limit: Maximum number of total encounters per day (null to disable)
+        db: Database session (injected)
+
+    Returns:
+        dict: Updated global daily limit
+
+    Raises:
+        HTTPException: 422 if limit is less than 1
+
+    Example:
+        >>> PUT /api/settings/global-daily-limit?limit=20
+        {"limit": 20}
+    """
+    if limit is not None and limit < 1:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail="Global daily limit must be at least 1",
+        )
+
+    setting = db.query(Settings).filter(Settings.key == "global_daily_limit").first()
+
+    if limit is None:
+        # Remove the setting
+        if setting:
+            db.delete(setting)
+            db.commit()
+        return {"limit": None}
+
+    if setting is None:
+        # Create new setting
+        setting = Settings(key="global_daily_limit", value=str(limit))
+        db.add(setting)
+    else:
+        # Update existing setting
+        setting.value = str(limit)
+
+    db.commit()
+    return {"limit": limit}
